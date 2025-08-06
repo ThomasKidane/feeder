@@ -28,6 +28,10 @@ public:
     bool downloadAllFiles(const QString &outputDirectory,
                          const QString &fileNamePrefix);
     
+    // Conversion
+    bool convertFile(const QString &inputPath, const QString &outputPath);
+    void convertDownloadedFiles(const QString &outputDirectory);
+    
     // Status
     bool isDeviceConnected();
     QString getSelectedDeviceName();

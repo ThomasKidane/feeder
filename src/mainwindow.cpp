@@ -203,9 +203,6 @@ void MainWindow::logMessage(const QString &msg) {
     QString logEntry = QString("[%1] %2").arg(timestamp).arg(msg);
     
     logArea->append(logEntry);
-    qDebug() << logEntry;
-    
-    saveLogToFile(logEntry);
 }
 
 void MainWindow::saveLogToFile(const QString &msg) {

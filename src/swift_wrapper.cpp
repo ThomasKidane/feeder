@@ -1,6 +1,9 @@
 #include "swift_wrapper.h"
 #include <QDir>
 #include <QDebug>
+#include <QFileInfo>
+#include <QFile>
+#include <QThread>
 
 SwiftWrapper::SwiftWrapper(QObject *parent) : QObject(parent) {
     // Set path to the Swift app
@@ -40,19 +43,14 @@ bool SwiftWrapper::runSwiftCommand(const QStringList &args, QString &output) {
 }
 
 void SwiftWrapper::startDeviceDiscovery() {
-    qDebug() << "SwiftWrapper: Starting device discovery";
-    
     // Run the full workflow in one call
     QString output;
     if (runSwiftCommand(QStringList() << "full", output)) {
-        qDebug() << "SwiftWrapper: Full workflow completed";
-        
         // Parse the output to extract files and sizes
         parseFileList(output);
         
         if (!cachedFiles.isEmpty()) {
             emit fileListReady(cachedFiles, cachedSizes, cachedDates);
-            qDebug() << "SwiftWrapper: Emitted" << cachedFiles.size() << "files";
         }
     }
 }
@@ -83,12 +81,9 @@ QStringList SwiftWrapper::getDiscoveredDevices() {
 }
 
 bool SwiftWrapper::selectDevice(const QString &deviceName) {
-    qDebug() << "SwiftWrapper: Selecting device:" << deviceName;
-    
     QString output;
     if (runSwiftCommand(QStringList() << "select" << deviceName, output)) {
         currentDevice = deviceName;
-        qDebug() << "SwiftWrapper: Device selected successfully";
         
         // Get files after device selection
         QStringList files = getDeviceFiles();
@@ -102,7 +97,6 @@ bool SwiftWrapper::selectDevice(const QString &deviceName) {
         return true;
     }
     
-    qDebug() << "SwiftWrapper: Failed to select device";
     return false;
 }
 
@@ -170,21 +164,16 @@ void SwiftWrapper::parseFileList(const QString &output) {
         }
     }
     
-    qDebug() << "SwiftWrapper: Parsed" << cachedFiles.size() << "files," << cachedSizes.size() << "sizes, and" << cachedDates.size() << "dates";
+
 }
 
 bool SwiftWrapper::downloadSelectedFiles(const QStringList &selectedFiles, 
                                        const QString &outputDirectory,
                                        const QString &fileNamePrefix) {
-    qDebug() << "SwiftWrapper: Downloading" << selectedFiles.size() << "files to" << outputDirectory;
-    qDebug() << "SwiftWrapper: Selected files:" << selectedFiles;
-    
     // First, we need to make sure a device is selected and files are available
     if (cachedFiles.isEmpty()) {
-        qDebug() << "SwiftWrapper: No files available, running full workflow first";
         QString output;
         if (!runSwiftCommand(QStringList() << "full", output)) {
-            qDebug() << "SwiftWrapper: Failed to get files";
             return false;
         }
         parseFileList(output);
@@ -195,22 +184,21 @@ bool SwiftWrapper::downloadSelectedFiles(const QStringList &selectedFiles,
     args << "download" << outputDirectory << fileNamePrefix;
     args.append(selectedFiles);
     
-    qDebug() << "SwiftWrapper: Running download command with args:" << args;
-    
     QString output;
     if (runSwiftCommand(args, output)) {
-        qDebug() << "SwiftWrapper: Download initiated successfully";
+        // Wait a bit for downloads to complete, then convert files
+        QThread::msleep(2000); // Wait 2 seconds for downloads to complete
+        
+        convertDownloadedFiles(outputDirectory);
+        
         return true;
     }
     
-    qDebug() << "SwiftWrapper: Download failed - see error output above";
     return false;
 }
 
 bool SwiftWrapper::downloadAllFiles(const QString &outputDirectory,
                                    const QString &fileNamePrefix) {
-    qDebug() << "SwiftWrapper: Downloading all files to" << outputDirectory;
-    
     // Get all files and download them
     QStringList allFiles = getDeviceFiles();
     return downloadSelectedFiles(allFiles, outputDirectory, fileNamePrefix);
@@ -222,4 +210,90 @@ bool SwiftWrapper::isDeviceConnected() {
 
 QString SwiftWrapper::getSelectedDeviceName() {
     return currentDevice;
+}
+
+bool SwiftWrapper::convertFile(const QString &inputPath, const QString &outputPath) {
+    QFileInfo inputFile(inputPath);
+    QString inputExt = inputFile.suffix().toLower();
+    QString outputExt = QFileInfo(outputPath).suffix().toLower();
+    
+    QProcess process;
+    
+    if (inputExt == "heic" && outputExt == "jpg") {
+        // Use sips for HEIC to JPG conversion (macOS built-in)
+        process.setProgram("/usr/bin/sips");
+        process.setArguments(QStringList() 
+            << "-s" << "format" << "jpeg"
+            << "-s" << "formatOptions" << "high"
+            << inputPath
+            << "--out" << outputPath);
+    } else if (inputExt == "mov" && outputExt == "mp4") {
+        // Use FFmpeg for MOV to MP4 conversion
+        process.setProgram("/opt/homebrew/bin/ffmpeg");
+        process.setArguments(QStringList()
+            << "-i" << inputPath
+            << "-c:v" << "libx264"
+            << "-c:a" << "aac"
+            << "-preset" << "medium"
+            << "-crf" << "23"
+            << "-y"
+            << outputPath);
+    } else {
+        return true;
+    }
+    
+    process.start();
+    if (!process.waitForFinished(60000)) { // 60 second timeout
+        process.terminate();
+        return false;
+    }
+    
+    bool success = process.exitCode() == 0;
+    return success;
+}
+
+void SwiftWrapper::convertDownloadedFiles(const QString &outputDirectory) {
+    QDir dir(outputDirectory);
+    if (!dir.exists()) {
+        return;
+    }
+    
+    // Look for subdirectories (like Feeder_A01E)
+    QStringList subdirs = dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    
+    for (const QString &subdir : subdirs) {
+        if (subdir.startsWith("Feeder_")) {
+            QString subdirPath = dir.absoluteFilePath(subdir);
+            QDir subdirDir(subdirPath);
+            
+            // Get all files in the subdirectory
+            QStringList files = subdirDir.entryList(QDir::Files);
+            
+            for (const QString &file : files) {
+                QString filePath = subdirDir.absoluteFilePath(file);
+                QFileInfo fileInfo(filePath);
+                QString ext = fileInfo.suffix().toLower();
+                QString baseName = fileInfo.baseName();
+                
+                // Convert HEIC to JPG
+                if (ext == "heic") {
+                    QString outputPath = subdirDir.absoluteFilePath(baseName + ".jpg");
+                    
+                    if (convertFile(filePath, outputPath)) {
+                        // Delete the original HEIC file
+                        QFile::remove(filePath);
+                    }
+                }
+                // Convert MOV to MP4
+                else if (ext == "mov") {
+                    QString outputPath = subdirDir.absoluteFilePath(baseName + ".mp4");
+                    
+                    if (convertFile(filePath, outputPath)) {
+                        // Delete the original MOV file
+                        QFile::remove(filePath);
+                    }
+                }
+            }
+        }
+    }
 } 

@@ -1,14 +1,61 @@
+# Build directories
 build/
-CMakeFiles/
+build-*/
 CMakeCache.txt
+CMakeFiles/
 cmake_install.cmake
 Makefile
-*.user
-*.pro.user
-*.qrc.depends
-*.autosave
+
+# Qt specific
 *.moc
-*.o
-*.obj
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+*.qm
+
+# macOS
+.DS_Store
+*.app/Contents/MacOS/
+*.app/Contents/Info.plist
+*.app/Contents/Resources/
+
+# Logs
 *.log
-logs/ 
+feeder.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Output directories
+FeederOutput/
+testoutput/
+
+# Swift build artifacts
+*.swiftmodule
+*.swiftdoc
+*.swiftsourceinfo
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+
+# Node.js (for future Electron version)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Electron build
+dist/
+out/ 
