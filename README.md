@@ -26,10 +26,10 @@ A macOS desktop application that automatically transfers, converts, and intellig
 ## Screenshots
 
 ### Main Application Window
-![Feeder Main Window](screenshots/Screenshot%202025-08-06%20at%202.01.25%20AM.png)
+![Feeder Main Window](screenshots/main-window.png)
 
 ### File Management Interface
-![File Management Interface](screenshots/Screenshot%202025-08-06%20at%202.01.10%20AM.png)
+![File Management Interface](screenshots/file-management.png)
 
 ## System Requirements
 
